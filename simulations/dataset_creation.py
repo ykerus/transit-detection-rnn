@@ -4,7 +4,7 @@ import numpy as np
 from tqdm import tqdm
 
 import utils
-import lightcurve_simulation as lcsim
+from simulations import lightcurve_simulation as lcsim
 
 
 def generate_nn_dataset(dir_name, size, pl_fracs=None, t_step=utils.min2day(2), snr_range=(3,80), 
