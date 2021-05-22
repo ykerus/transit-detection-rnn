@@ -9,7 +9,7 @@ import lightcurve_simulation as lcsim
 
 def generate_nn_dataset(dir_name, size, pl_fracs=None, t_step=utils.min2day(2), snr_range=(3,80), 
                         rdepth_range=(.25,5), N_points=1500, dur_range=(0,utils.hour2day(14)),
-                        period_range=(2,100), base_dir="data/nn/sim"):
+                        period_range=(2,100), base_dir="../data/nn/sim"):
     pl_fracs = [0.5, 0.35, 0.15] if pl_fracs is None else pl_fracs
     
     store_path = base_dir + '/' + dir_name
