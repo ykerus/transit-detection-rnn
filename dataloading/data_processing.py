@@ -10,6 +10,8 @@ def lin_interp(flux, flat_window=None, pos_offs=1e5, t_step=utils.min2day(2),
     # assumes uniformly spaced measurements
     if flux.ndim == 1:
         nan = np.isnan(flux)
+        if ~np.any(nan):
+            return flux
         time = np.arange(len(flux)) * t_step
         if flat_window is not None:
             f_, trend = flatten(time, flux+pos_offs, method="median",
