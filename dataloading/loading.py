@@ -1,7 +1,10 @@
 
+import pickle
 import numpy as np
 import torch
-import data_processing as dp
+from torch.utils.data import DataLoader
+from dataloading import data_processing as dp
+
 
 class Data(torch.utils.data.Dataset):
     def __init__(self, flux, mask, transit, rdepth, additional=None):
@@ -52,38 +55,40 @@ def get_loaders_fn(train_path, valid_path, train_batch=128, valid_batch=1000, te
     test_path = test_path if isinstance(test_path, list) else [test_path]
     
     # train data
-    split = combine_data([dp.load_data(path) for path in train_path])
+    split = combine_data([load_data(path) for path in train_path])
     split["flux"], (mean, std), addnl = dp.preprocess(split["flux"], split["sigma"], mode, nanmode,
                                         None, None, scale_median, True, standardize,  
                                         centr=[split["mom_col"], split["mom_row"]] if incl_centr else None,
                                         centr_mean=None, centr_std=None)
-    del split["mom_col"], split["mom_row"]
+    if "mom_col" in split:
+        del split["mom_col"], split["mom_row"]
     (centr, centr_mean, centr_std) = addnl
     additional = centr if incl_centr else None
     
-    train_loader = DataLoader(dp.Data(split["flux"], split["mask"], split["transit"], split["rdepth"],
+    train_loader = DataLoader(Data(split["flux"], split["mask"], split["transit"], split["rdepth"],
                                       additional=additional),
                               batch_size=train_batch, shuffle=True)  
     del split
     
     # validation data
-    split = combine_data([dp.load_data(path) for path in valid_path])
+    split = combine_data([load_data(path) for path in valid_path])
     split["flux"], _ , addnl = dp.preprocess(split["flux"], split["sigma"], mode, nanmode,
                                      mean, std, scale_median, True, standardize,
                                      centr=[split["mom_col"], split["mom_row"]] if incl_centr else None,
                                      centr_mean=centr_mean, centr_std=centr_std)
-    del split["mom_col"], split["mom_row"]
+    if "mom_col" in split:
+        del split["mom_col"], split["mom_row"]
     (centr, _, _) = addnl
     additional = centr if incl_centr else None
 
-    valid_loader = DataLoader(dp.Data(split["flux"], split["mask"], split["transit"], split["rdepth"],
+    valid_loader = DataLoader(Data(split["flux"], split["mask"], split["transit"], split["rdepth"],
                                       additional=additional),
                               batch_size=valid_batch, shuffle=False)
     if test_path[0] is None:
         return train_loader, valid_loader, None
     
     # test data
-    split = combine_data([dp.load_data(path) for path in test_path])
+    split = combine_data([load_data(path) for path in test_path])
     split["flux"], _, addnl = dp.preprocess(split["flux"], split["sigma"], mode, nanmode,
                                      mean, std, scale_median, True, standardize,
                                      centr=[split["mom_col"], split["mom_row"]] if incl_centr else None,
@@ -91,7 +96,7 @@ def get_loaders_fn(train_path, valid_path, train_batch=128, valid_batch=1000, te
     del split["mom_col"], split["mom_row"]
     (centr, _, _) = addnl
     additional = centr if incl_centr else None
-    test_loader = DataLoader(dp.Data(split["flux"], split["mask"], split["transit"], split["rdepth"],
+    test_loader = DataLoader(Data(split["flux"], split["mask"], split["transit"], split["rdepth"],
                                      additional=additional),
                               batch_size=valid_batch, shuffle=False)
     return train_loader, valid_loader, test_loader
