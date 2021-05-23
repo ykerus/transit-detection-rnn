@@ -1,4 +1,9 @@
+numpy==1.19.5
 celerite2==0.2.0
 tqdm==4.60.0
 batman-package==2.4.7
 astropy==4.1
+torch==1.8.1
+scipy==1.5.4
+wotan==1.9
+matplotlib==3.3.4
