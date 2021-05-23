@@ -1,44 +1,9 @@
-import os
-import pickle
+
 import numpy as np
 import warnings
-import torch
 from scipy import interpolate
 from wotan import flatten
-from astropy.stats import sigma_clip
 import utils
-
-
-class Data(torch.utils.data.Dataset):
-    def __init__(self, flux, mask, transit, rdepth, additional=None):
-        # any data array in additional should be same size as flux
-        if additional is not None:
-            additional = additional if isinstance(additional, list) else [additional]
-            self.flux = torch.tensor(np.stack([flux] + additional, axis=2)).type(torch.FloatTensor)  # [B, T, F]
-        else:
-            self.flux = torch.tensor(flux).type(torch.FloatTensor).view(len(flux), -1)  # [B, T]
-        self.mask = torch.tensor(mask).type(torch.FloatTensor).view(len(flux), -1)  # [B, T]
-        self.transit = torch.tensor(transit).type(torch.FloatTensor).view(-1)  # [B,]
-        self.rdepth = torch.tensor(rdepth).type(torch.FloatTensor).view(len(flux), -1)  # [B, T]
-        self.n_samples = len(flux[:, 0])
-
-    def __getitem__(self, key):
-        return self.flux[key], self.mask[key], self.transit[key], self.rdepth[key]
-
-    def __len__(self):
-        return self.n_samples
-
-
-def load_data(load_path, unpack=None):
-    if load_path.split("/")[-1].startswith("."):
-        return [None]*6 if unpack else None
-    with open(load_path, "rb") as f:
-        batch = pickle.load(f)
-    if unpack is None or unpack == False:
-        return batch
-    unpack = [unpack] if isinstance(unpack, str) else unpack
-    return [batch[key] for key in unpack]
-
 
 def lin_interp(flux, flat_window=None, pos_offs=1e5, t_step=utils.min2day(2),
                inplace=True):
