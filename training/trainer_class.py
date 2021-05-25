@@ -252,7 +252,27 @@ class Trainer:
             for sname in self.scorenames:
                 self.metrics[dset][rng][sname].append(eval(sname))
                 
-    
+                
+    def get_test_results(self, test_loader):
+        self.model.to(self.device)
+        test_result = {rng:{} for rng in self.snr_ranges}
+        _, scores = self.evaluate(loader=test_loader)
+        for rng in self.snr_ranges:
+            tp, fp, tn, fn = scores[rng]["tp"], scores[rng]["fp"], scores[rng]["tn"],  scores[rng]["fn"]
+            tp_seg, fp_seg = scores[rng]["tp_seg"], scores[rng]["fp_seg"]
+            tn_seg, fn_seg = scores[rng]["tn_seg"], scores[rng]["fn_seg"]
+
+            for metricname in self.metricnames:
+                if metricname.endswith("_seg"):
+                    mvalue = self.compute_metric(metricname[:-4], tp_seg, fp_seg, tn_seg, fn_seg)
+                else:
+                    mvalue = self.compute_metric(metricname, tp, fp, tn, fn)
+                test_result[rng][metricname] = mvalue
+            for sname in self.scorenames:
+                test_result[rng][sname] = eval(sname)
+        self.metrics["test"] = test_result
+        self.model.to("cpu")
+        
     def _set_transit_weight(self):
         # in case both snr weighting and transit weight is applied
         # a small adjustment needs to made for consistent results
