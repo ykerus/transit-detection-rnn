@@ -92,8 +92,9 @@ def get_loaders_fn(train_path, valid_path, train_batch=128, valid_batch=1000, te
     split["flux"], _, addnl = dp.preprocess(split["flux"], split["sigma"], mode, nanmode,
                                      mean, std, scale_median, True, standardize,
                                      centr=[split["mom_col"], split["mom_row"]] if incl_centr else None,
-                                     _mean=centr_mean, centr_std=centr_std)
-    del split["mom_col"], split["mom_row"]
+                                     centr_mean=centr_mean, centr_std=centr_std)
+    if "mom_col" in split:
+        del split["mom_col"], split["mom_row"]
     (centr, _, _) = addnl
     additional = centr if incl_centr else None
     test_loader = DataLoader(Data(split["flux"], split["mask"], split["transit"], split["rdepth"],
