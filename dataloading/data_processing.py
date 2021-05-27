@@ -137,11 +137,19 @@ def preprocess(flux, scaling=None, mode=0, nanmode=0, mean=None, std=None,
         centr_[0] /= scaling[:, None]
         centr_[1] /= scaling[:, None]
 
-    mean = np.nanmean(flux_) if mean is None else mean
-    std = np.nanstd(flux_) if std is None else std
+    if mean is None:
+        mean = np.nanmean(flux_)
+        print("flux mean =", mean)
+    if std is None:
+        std = np.nanstd(flux_)
+        print("flux std =", std)
 
-    centr_mean = [np.nanmean(c) for c in centr_] if (centr_mean is None and centr is not None) else centr_mean
-    centr_std = [np.nanstd(c) for c in centr_] if (centr_std is None and centr is not None) else centr_std
+    if centr_mean is None and centr is not None:
+        centr_mean = [np.nanmean(c) for c in centr_]
+        print("centr mean =", centr_mean)
+    if centr_std is None and centr is not None:
+        centr_std = [np.nanstd(c) for c in centr_]
+        print("centr std =", centr_std)
 
     if standardize:
         flux_ = (flux_ - mean) / std  # standardize
