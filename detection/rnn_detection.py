@@ -83,6 +83,7 @@ def find_max(period, score, t0, ntr, peak_frac=2):
 
 def algorithm1(pts, num_iters=3, min_transits=3, p_min=2, p_max=None, step_mult=2, 
                smooth=True, peak_frac=2, show_steps=False):
+    # folding over periods, weighing overlapping values to define a score at each time step
     def _show_step(x,y):
         plt.figure(figsize=(10,2))
         plt.plot(x,y)
@@ -104,4 +105,186 @@ def algorithm1(pts, num_iters=3, min_transits=3, p_min=2, p_max=None, step_mult=
         detections[maxscore] = {"period":p_est, "t0":t0_est, "duration":dur_est}
         msk = get_transit_mask(time, p_est, t0_est, dur_est, dur_mult=2)
         pts_[0,msk] = 0  # hide detected transits and run again
+    return detections
+
+# ====================================
+
+
+def get_peaks(bool_array):
+    # used by alg2
+    if sum(bool_array) == 0:
+        return None
+    where = np.where(bool_array)[0]
+    starts = np.append(0,np.where(np.diff(where, prepend=where[0])>1)[0])
+    ranges = [(starts[i], starts[i+1]) for i in range(len(starts)-1)]
+    indc = [where[i:j] for (i,j) in ranges] + [where[starts[-1]:]]
+    return indc
+
+# def get_tc(time, peaks):
+#     return np.array([np.mean(time[indc]) for indc in peaks])
+
+def get_tc(time, peaks, pred):
+    # used by alg2
+    tcs = []
+    for indc in peaks:
+        left = np.where(np.cumsum(pred[indc])/np.sum(pred[indc])<0.5)[0]
+        indx = left[-1] if len(left) > 0 else 0
+        tcs.append(time[indc][indx]) 
+    return np.array(tcs)
+
+def agg_h(hiddens, peaks, agg_fn=np.mean, normalize=True):
+    # used by alg2
+    aggregated = np.zeros((len(peaks), hiddens.shape[-1]))
+    for i, indc in enumerate(peaks):
+        agg = agg_fn(hiddens[indc], axis=0)
+        agg = agg / np.linalg.norm(agg) if normalize else agg
+        aggregated[i] = agg
+    return aggregated
+
+def neg_mse(a, b, normalize=True):
+    # used by alg2
+    a_ = a / np.linalg.norm(a) if normalize else a
+    b_ = b / np.linalg.norm(b) if normalize else b
+    return -np.mean((a_ - b_)**2)
+
+def dot(a, b, normalize=True):   
+    # used by alg2
+    a_ = a / np.linalg.norm(a) if normalize else a
+    b_ = b / np.linalg.norm(b) if normalize else b
+    return a_ @ b_
+
+def match_hiddens(hiddens, sim_thresh=0.5, sim_measure="dot"):
+    # used by alg2
+    if sim_measure=="dot":
+        aggd = np.sum((hiddens.reshape(len(hiddens),1,-1) * hiddens.reshape(1,len(hiddens),-1)),-1)
+        aggd *= np.tri(*aggd.shape,k=-1).T
+    return [match for match in zip(*np.where(aggd > sim_thresh))]
+
+def agg_pred(preds, peaks, agg_fn=np.max):
+    # used by alg2
+    aggregated = np.zeros(len(peaks))
+    for i, indc in enumerate(peaks):
+        aggregated[i] = agg_fn(preds[indc])
+    return aggregated
+
+def find_candidates(matches, tcs, t_max):
+    # used by alg2
+    candidates = []
+    match_copy = list(matches)
+    for match in matches:
+        match_copy.remove(match)
+        match_tcs = [tcs[i] for i in match]
+        if match_tcs[1] < match_tcs[0] * 2:
+            continue  # not always correct, could have missed one at beginning
+        while True:
+            p_expd = np.diff(match_tcs).mean()
+            next_exp = match_tcs[-1] + p_expd  # expected time of next signal
+            next_min, next_max = next_exp-3/24, next_exp+3/24
+            if next_exp > t_max:
+                candidates.append(match)
+                break
+#             next_candidates = np.where((tcs > next_min)*(tcs < next_max))[0] # !could be multiple 
+            next_candidate = np.argmin(np.abs(tcs - next_exp))
+            if tcs[next_candidate] < next_min or tcs[next_candidate] > next_max:
+                break
+            
+            s = next_candidate # could do: for s in next candidates
+            next_match = False
+    
+            for m in match_copy:
+                
+                if m[1]==s and m[0] in match:
+                    next_match = True
+                    break
+            if next_match:
+                match += (s,)
+                match_tcs.append(tcs[s])
+                continue
+            else:
+                break
+    return sorted(candidates, key=len, reverse=True)
+
+def filter_matches(matches, tcs):
+    # used by alg2
+    filtered = []
+    for match in matches:
+        match_tcs = tcs[np.array(match)]
+        tcs_diffs = np.diff(match_tcs)
+        period_avg = np.mean(tcs_diffs)
+        if np.all(np.abs(tcs_diffs-period_avg)<30./60/24):
+            filtered.append(match)
+    return sorted(filtered, key=len, reverse=True)
+
+def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2):
+    time = np.arange(len(pts)) * utils.min2day(2)
+    pts_ = gaussian_filter1d(pts.copy(), 9) if smooth else pts.copy()
+    
+    peaks = get_peaks(pts_>0.25) 
+    if peaks is None:
+        return {}
+#     peak_h = agg_h(r, peaks, agg_fn=np.mean, normalize=True)  # add aggregated confidences
+    peak_max = agg_pred(pts_, peaks, agg_fn=np.mean)
+    peak_tc = get_tc(time, peaks, pts_)
+    peak_duration = np.array([time[indc][-1]-time[indc][0] for indc in peaks])
+#     match_h = match_hiddens(peak_h, sim_thresh=-99) # FIX: it matches with itself
+    match_h = []
+    for i in range(len(peaks)):
+        match_h += [(i,j) for j in range(i+1,len(peaks))]
+        
+    detections = {}
+    candidates = find_candidates(match_h, peak_tc, time[-1])
+    for i in range(num_iters):
+ 
+        best_candidate = (-1, -1)
+        max_score, best_period, best_duration, best_t0 = 0, -1, -1, -1
+
+        for c in candidates:
+            try_duration = np.median(peak_duration[np.array(c)])
+            try_period = np.median(np.diff(peak_tc[np.array(c)]))
+            try_t0 = np.median([peak_tc[ci]-i*try_period for i,ci in enumerate(c)])
+            if try_duration < 15./60/24 or try_period < p_min or try_t0 < 0:
+                continue
+            score, n_transits = 0, 0
+            tt = try_t0
+            while tt < time[-1]:
+                score += np.max(pts_[(time > tt-0.5*try_duration)*(time < tt+0.5*try_duration)]) # mean worse
+                n_transits += 1
+                tt += try_period
+            score /= np.sqrt(n_transits)
+            if score > max_score:
+                max_score = score
+                best_period = try_period
+                best_t0 = try_t0
+                best_duration = try_duration
+                best_candidate = c
+
+        if best_candidate is not (-1,-1):
+            if best_period/2 > p_min:
+                harmonic = 2
+                base_period = best_period
+                try_period = base_period / harmonic
+                while try_period > p_min:
+                    try_t0 = best_t0
+                    while try_t0-try_period-0.5*best_duration > 0:
+                        try_t0 = try_t0-try_period
+
+                    harmonic_score = 0
+                    n_transits = 0
+                    tt = try_t0
+                    while tt < time[-1]:
+                        harmonic_score += np.max(pts_[(time > tt-0.5*best_duration)*(time < tt+0.5*best_duration)])
+                        n_transits += 1
+                        tt += try_period
+                    harmonic_score /= np.sqrt(n_transits)
+                    if harmonic_score > max_score:
+                        best_period = try_period
+                        best_t0 = try_t0
+                        max_score = harmonic_score
+
+                    harmonic += 1
+                    try_period = base_period/harmonic   
+            detections[max_score] = {"period":best_period, "t0":best_t0, "duration":best_duration}
+            msk = get_transit_mask(time, best_period, best_t0, best_duration, dur_mult=2)
+            pts_[msk] = 0
+                
     return detections
