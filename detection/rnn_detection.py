@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import torch
 
 from scipy.ndimage import gaussian_filter1d
+from detection.detection_utils import *
 
 
 def get_pts(model, flux):
@@ -80,26 +81,16 @@ def find_max(period, score, t0, ntr, peak_frac=2):
     return p_est, t0_est, dur_est, maxscore
 
 
-def get_transit_mask(time, period, t0, duration, dur_mult=1):  
-    # used by alg1
-    msk = np.zeros_like(time, dtype=bool)
-    tt = t0
-    while tt < time[-1]:
-        msk[(time >= tt - (dur_mult*duration/2.)) & (time <= tt + (dur_mult*duration/2.))] = True
-        tt += period
-    return msk
-
-
 def algorithm1(pts, num_iters=3, min_transits=3, p_min=2, p_max=None, step_mult=2, 
                smooth=True, peak_frac=2, show_steps=False):
-    time = np.arange(len(pts)) * utils.min2day(2)
-    pts_ = gaussian_filter1d(pts.copy(), 9).reshape(1,-1) if smooth else pts.copy().reshape(1,-1)
-    
     def _show_step(x,y):
         plt.figure(figsize=(10,2))
         plt.plot(x,y)
         plt.show()
         
+    time = np.arange(len(pts)) * utils.min2day(2)
+    pts_ = gaussian_filter1d(pts.copy(), 9).reshape(1,-1) if smooth else pts.copy().reshape(1,-1)
+      
     detections = {}
    
     for i in range(num_iters):
@@ -107,7 +98,7 @@ def algorithm1(pts, num_iters=3, min_transits=3, p_min=2, p_max=None, step_mult=
                               p_max=p_max, step_mult=step_mult)
         periods, scores, t0s, ntrs = spectra
         sdes = (scores-np.mean(scores,1)[:,None]) / np.std(scores,1)[:,None]  # similar to BLS
-        _show_step(periods, sdes[0])
+        _show_step(periods, sdes[0]) if show_steps else None
         candidate = find_max(periods, sdes[0], t0s[0], ntrs[0], peak_frac)
         p_est, t0_est, dur_est, maxscore = candidate
         detections[maxscore] = {"period":p_est, "t0":t0_est, "duration":dur_est}
