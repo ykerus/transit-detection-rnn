@@ -139,14 +139,17 @@ def get_transits(time, params=None, min_transits=2, mask=None, max_attempts=10):
     return flux, params
 
 
-def _add_planet(time, rdepth_range, snr_range, mask, max_snr_attempts, 
-                pl_given, pl_params, sigma, min_transits, period_range, pl_i, info, dur_range):
+def _add_planet(time, rdepth_range, snr_range, mask, max_snr_attempts, pl_given, pl_params,
+                sigma, min_transits, period_range, pl_i, info, dur_range, lower_snr):
     # used by get_lightcurve, placed here to split up the code
     snr, snr_attempt, snr_success = 0, 0, False
     while not snr_success and snr_attempt < max_snr_attempts:
         # pl_ror only used if pl_params is not provided, or with multiple planets
-        mn2, mx2 = rdepth_range[0]**2, rdepth_range[1]**2  # squered for more bias towards lower snr
-        rdepth = (np.exp(np.random.uniform(np.log(mn2), np.log(mx2)))-mn2)/(mx2-mn2)
+        if lower_snr:
+            mn, mx = rdepth_range[0]**2, rdepth_range[1]**2  # squared for more bias towards lower snr
+        else: 
+            mn, mx = rdepth_range[0], rdepth_range[1]
+        rdepth = (np.exp(np.random.uniform(np.log(mn), np.log(mx)))-mn)/(mx-mn)
         rdepth = rdepth * (rdepth_range[1]-rdepth_range[0]) + rdepth_range[0]
         pl_ror = np.sqrt(rdepth * sigma)
         
@@ -177,7 +180,8 @@ def _add_planet(time, rdepth_range, snr_range, mask, max_snr_attempts,
 
 def get_lightcurve(num_planets, min_transits=2, period_range=(2,100), t_max=27.4, t_step=utils.min2day(2), 
                    time=None, pl_params=None, st_params=None, max_attempts=2, max_snr_attempts=5,
-                   snr_range=(3,80), rdepth_range=(.25,5.), info=False, dur_range=(0,utils.hour2day(14))):
+                   snr_range=(3,80), rdepth_range=(.25,5.), info=False, dur_range=(0,utils.hour2day(13)),
+                   lower_snr=True):
     
     time = np.arange(0, t_max, t_step) if time is None else time
     st_given = None if st_params is None else st_params.copy()
@@ -203,7 +207,7 @@ def get_lightcurve(num_planets, min_transits=2, period_range=(2,100), t_max=27.4
             
             pl_result = _add_planet(time, rdepth_range, snr_range, np.any(pl_masks, axis=0), 
                                     max_snr_attempts, pl_given, pl_params, sigma, min_transits, period_range, 
-                                    i, info, dur_range)
+                                    i, info, dur_range, lower_snr)
             transits, pl_params, snr_success = pl_result
                                                                                
             if not snr_success:
