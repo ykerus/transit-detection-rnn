@@ -45,9 +45,52 @@ def combine_data(data_parts):
     return combined
 
 
+def separate_trues(bool_array):  
+    if not np.any(bool_array):
+        return []
+    where = np.where(bool_array)[0]
+    starts = np.append(0,np.where(np.diff(where, prepend=where[0])>1)[0])
+    ranges = [(starts[i], starts[i+1]) for i in range(len(starts)-1)]
+    indc = [where[i:j] for (i,j) in ranges] + [where[starts[-1]:]]  
+    return indc
+
+
+def insert_gaps_fn(flux, mask, inplace=True, min_hours=2, max_hours=10):
+    num_gaps = np.random.choice([0,1,2], p=[0.5, 0.35, 0.15])
+    
+    flux_ = flux if inplace else flux.copy()
+    tr_indc = separate_trues(mask.astype(bool))
+    edge_free = 6 * 30  # points away from edge to place gaps
+    gap_spacing = 30  # min space between gaps
+    
+    success = False
+    while not success:
+        spacing_success = True
+        gap_ranges = []
+        gap_msk = np.zeros(len(flux)).astype(bool)
+        for gap in range(num_gaps):
+            size = int(np.exp(np.random.uniform(np.log(min_hours), np.log(max_hours)))*30)
+            i = np.random.choice(np.arange(int(edge_free+size/2), len(flux)-int(edge_free+size/2)))
+            min_i, max_i = int(i-size/2), int(i+size/2)
+            for rng in gap_ranges:
+                if (max_i < rng[0] and rng[0]-max_i < gap_spacing)\
+                or (min_i > rng[1] and min_i - rng[1] < gap_spacing)\
+                or (max_i > rng[0] and max_i < rng[1])\
+                or (min_i > rng[0] and min_i < rng[1]):
+                    spacing_success = False
+            gap_ranges.append((min_i,max_i))
+            gap_msk[min_i:max_i] = True
+        gap_msk[np.random.choice([True, False], p=[0.02, 0.98], size=len(gap_msk))] = True
+        gap_msk[0], gap_msk[-1] = False, False
+        success = np.all([gap_msk[indc].mean()<0.5 for indc in tr_indc]) * spacing_success
+
+    flux_[gap_msk] = np.nan
+    return flux_
+
+
 def get_loaders_fn(train_path, valid_path, train_batch=128, valid_batch=1000, test_path=None, 
                    mode=1, nanmode=2, scale_median=0, standardize=1,
-                   incl_centr=False):
+                   incl_centr=False, insert_gaps=False):
     # preprocesses function for own simulated data
 
     train_path = train_path if isinstance(train_path, list) else [train_path]
@@ -56,6 +99,10 @@ def get_loaders_fn(train_path, valid_path, train_batch=128, valid_batch=1000, te
     
     # train data
     split = combine_data([load_data(path) for path in train_path])
+    if insert_gaps:
+        for i in range(len(split["flux"])):
+            split["flux"][i] = insert_gaps_fn(split["flux"][i], split["mask"][i])
+        
     split["flux"], (mean, std), addnl = dp.preprocess(split["flux"], split["sigma"], mode, nanmode,
                                         None, None, scale_median, True, standardize,  
                                         centr=[split["mom_col"], split["mom_row"]] if incl_centr else None,
@@ -72,6 +119,9 @@ def get_loaders_fn(train_path, valid_path, train_batch=128, valid_batch=1000, te
     
     # validation data
     split = combine_data([load_data(path) for path in valid_path])
+    if insert_gaps:
+        for i in range(len(split["flux"])):
+            split["flux"][i] = insert_gaps_fn(split["flux"][i], split["mask"][i])
     split["flux"], _ , addnl = dp.preprocess(split["flux"], split["sigma"], mode, nanmode,
                                      mean, std, scale_median, True, standardize,
                                      centr=[split["mom_col"], split["mom_row"]] if incl_centr else None,
@@ -89,6 +139,9 @@ def get_loaders_fn(train_path, valid_path, train_batch=128, valid_batch=1000, te
     
     # test data
     split = combine_data([load_data(path) for path in test_path])
+    if insert_gaps:
+        for i in range(len(split["flux"])):
+            split["flux"][i] = insert_gaps_fn(split["flux"][i], split["mask"][i])
     split["flux"], _, addnl = dp.preprocess(split["flux"], split["sigma"], mode, nanmode,
                                      mean, std, scale_median, True, standardize,
                                      centr=[split["mom_col"], split["mom_row"]] if incl_centr else None,
