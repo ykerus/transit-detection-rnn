@@ -9,12 +9,14 @@ from scipy.ndimage import gaussian_filter1d
 from detection.detection_utils import *
 
 
-def get_pts(model, flux):
+def get_pts(model, flux, additional=False):
     # assuming preprocessed flux shaped as [B,N]
     flux_tens = torch.tensor(flux).type(torch.FloatTensor)
     with torch.no_grad():
-        pts = model(flux_tens)[0]
-    return pts.numpy()
+        out = model(flux_tens)
+        if not additional:
+            return out[0].squeeze().numpy()
+        return out[0].squeeze().numpy(), out[-1].squeeze().numpy()
 
 
 def fold_multi(time, data, period):
@@ -112,14 +114,14 @@ def algorithm1(pts, num_iters=3, min_transits=3, p_min=2, p_max=None, step_mult=
 
 def get_peaks(bool_array):
     # used by alg2
-    if sum(bool_array) == 0:
-        return None
+    if not np.any(bool_array):
+        return []
     where = np.where(bool_array)[0]
     starts = np.append(0,np.where(np.diff(where, prepend=where[0])>1)[0])
     ranges = [(starts[i], starts[i+1]) for i in range(len(starts)-1)]
-    indc = [where[i:j] for (i,j) in ranges] + [where[starts[-1]:]]
+    indc = [where[i:j] for (i,j) in ranges] + [where[starts[-1]:]]  
     return indc
-
+    
 # def get_tc(time, peaks):
 #     return np.array([np.mean(time[indc]) for indc in peaks])
 
