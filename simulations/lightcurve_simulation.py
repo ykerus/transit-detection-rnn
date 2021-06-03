@@ -181,7 +181,7 @@ def _add_planet(time, rdepth_range, snr_range, mask, max_snr_attempts, pl_given,
 def get_lightcurve(num_planets, min_transits=2, period_range=(2,100), t_max=27.4, t_step=utils.min2day(2), 
                    time=None, pl_params=None, st_params=None, max_attempts=2, max_snr_attempts=5,
                    snr_range=(3,80), rdepth_range=(.25,5.), info=False, dur_range=(0,utils.hour2day(13)),
-                   lower_snr=True):
+                   lower_snr=True, sigma=None):
     
     time = np.arange(0, t_max, t_step) if time is None else time
     st_given = None if st_params is None else st_params.copy()
@@ -195,7 +195,7 @@ def get_lightcurve(num_planets, min_transits=2, period_range=(2,100), t_max=27.4
         
         if st_given is None and attempt > 0:
             variability, st_params = get_stellar_variability(time, params=None)
-        noise, sigma = get_photon_noise(time)
+        noise, sigma = get_photon_noise(time, sigma)
         background = variability + noise  # could be used for transit snr selection
         flux = background.copy()
         
