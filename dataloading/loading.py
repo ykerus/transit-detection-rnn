@@ -24,6 +24,37 @@ class Data(torch.utils.data.Dataset):
 
     def __len__(self):
         return self.n_samples
+    
+    
+class ContrastData(torch.utils.data.Dataset):
+    def __init__(self, flux1, mask1, hmask1, transit1, rdepth1, flux2, mask2, hmask2, transit2, rdepth2, positive):
+        # any data array in additional should be same size as flux
+        self.flux1 = torch.tensor(flux1).type(torch.FloatTensor).view(len(flux1), -1)  # [B, T]
+        self.flux2 = torch.tensor(flux2).type(torch.FloatTensor).view(len(flux2), -1)  # [B, T]
+        
+        self.mask1 = torch.tensor(mask1).type(torch.FloatTensor).view(len(flux1), -1)  # [B, T]
+        self.mask2 = torch.tensor(mask2).type(torch.FloatTensor).view(len(flux2), -1)  # [B, T]
+        
+        self.hmask1 = torch.tensor(hmask1).type(torch.FloatTensor).view(len(flux1), -1)  # [B, T]
+        self.hmask2 = torch.tensor(hmask2).type(torch.FloatTensor).view(len(flux2), -1)  # [B, T]
+        
+        self.transit1 = torch.tensor(transit1).type(torch.FloatTensor).view(-1)  # [B,]
+        self.transit2 = torch.tensor(transit2).type(torch.FloatTensor).view(-1)  # [B,]
+        
+        self.rdepth1 = torch.tensor(rdepth1).type(torch.FloatTensor).view(len(flux1), -1)  # [B, T]
+        self.rdepth2 = torch.tensor(rdepth2).type(torch.FloatTensor).view(len(flux2), -1)  # [B, T]
+        
+        self.positive = torch.tensor(positive).type(torch.FloatTensor).view(-1)  # [B,]
+        
+        self.n_samples = len(flux1[:, 0])
+
+    def __getitem__(self, key):
+        out1 = (self.flux1[key], self.mask1[key], self.hmask1[key], self.transit1[key], self.rdepth1[key])
+        out2 = (self.flux2[key], self.mask2[key], self.hmask2[key], self.transit2[key], self.rdepth2[key])
+        return out1, out2, self.positive[key]
+
+    def __len__(self):
+        return self.n_samples
 
 
 def load_data(load_path, unpack=None):
@@ -152,5 +183,54 @@ def get_loaders_fn(train_path, valid_path, train_batch=128, valid_batch=1000, te
     additional = centr if incl_centr else None
     test_loader = DataLoader(Data(split["flux"], split["mask"], split["transit"], split["rdepth"],
                                      additional=additional),
+                              batch_size=valid_batch, shuffle=False)
+    return train_loader, valid_loader, test_loader
+
+
+def get_contrast_loaders_fn(train_path, valid_path, train_batch=128, valid_batch=1000, test_path=None, 
+                            mode=1, nanmode=2, scale_median=0, standardize=1):
+    
+    # train data
+    split = load_data(train_path)
+    fl_out, (mean, std), _ = dp.preprocess(np.concatenate([split["flux1"],split["flux2"]]),
+                                          np.repeat(split["sigma"],2), mode, nanmode,
+                                          None, None, scale_median, True, standardize)
+    split["flux1"], split["flux2"] = np.split(fl_out, 2)
+
+    
+    train_loader = DataLoader(ContrastData(split["flux1"], split["mask1"], split["hmask1"],
+                                           split["transit1"], split["rdepth1"], split["flux2"], 
+                                           split["mask2"], split["hmask2"], split["transit2"],
+                                           split["rdepth2"], split["positive"]),
+                              batch_size=train_batch, shuffle=True)
+    del split
+    
+    # validation data
+    split = load_data(valid_path)
+    fl_out, _, _ = dp.preprocess(np.concatenate([split["flux1"],split["flux2"]]),
+                                          np.repeat(split["sigma"],2), mode, nanmode,
+                                          mean, std, scale_median, True, standardize)
+    split["flux1"], split["flux2"] = np.split(fl_out, 2)
+
+    valid_loader = DataLoader(ContrastData(split["flux1"], split["mask1"], split["hmask1"],
+                                           split["transit1"], split["rdepth1"], split["flux2"], 
+                                           split["mask2"], split["hmask2"], split["transit2"],
+                                           split["rdepth2"], split["positive"]),
+                              batch_size=valid_batch, shuffle=False)
+    del split
+    if test_path[0] is None:
+        return train_loader, valid_loader, None
+    
+    # test data
+    split = load_data(test_path)
+    fl_out, _, _ = dp.preprocess(np.concatenate([split["flux1"],split["flux2"]]),
+                                          np.repeat(split["sigma"],2), mode, nanmode,
+                                          mean, std, scale_median, True, standardize)
+    split["flux1"], split["flux2"] = np.split(fl_out, 2)
+
+    test_loader = DataLoader(ContrastData(split["flux1"], split["mask1"], split["hmask1"],
+                                           split["transit1"], split["rdepth1"], split["flux2"], 
+                                           split["mask2"], split["hmask2"], split["transit2"],
+                                           split["rdepth2"], split["positive"]),
                               batch_size=valid_batch, shuffle=False)
     return train_loader, valid_loader, test_loader
