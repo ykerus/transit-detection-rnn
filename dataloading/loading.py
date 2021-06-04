@@ -35,8 +35,8 @@ class ContrastData(torch.utils.data.Dataset):
         self.mask1 = torch.tensor(mask1).type(torch.FloatTensor).view(len(flux1), -1)  # [B, T]
         self.mask2 = torch.tensor(mask2).type(torch.FloatTensor).view(len(flux2), -1)  # [B, T]
         
-        self.hmask1 = torch.tensor(hmask1).type(torch.FloatTensor).view(len(flux1), -1)  # [B, T]
-        self.hmask2 = torch.tensor(hmask2).type(torch.FloatTensor).view(len(flux2), -1)  # [B, T]
+        self.hmask1 = torch.tensor(hmask1).type(torch.BoolTensor).view(len(flux1), -1)  # [B, T]
+        self.hmask2 = torch.tensor(hmask2).type(torch.BoolTensor).view(len(flux2), -1)  # [B, T]
         
         self.transit1 = torch.tensor(transit1).type(torch.FloatTensor).view(-1)  # [B,]
         self.transit2 = torch.tensor(transit2).type(torch.FloatTensor).view(-1)  # [B,]
@@ -218,7 +218,7 @@ def get_contrast_loaders_fn(train_path, valid_path, train_batch=128, valid_batch
                                            split["rdepth2"], split["positive"]),
                               batch_size=valid_batch, shuffle=False)
     del split
-    if test_path[0] is None:
+    if test_path is None:
         return train_loader, valid_loader, None
     
     # test data
