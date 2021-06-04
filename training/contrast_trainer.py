@@ -120,12 +120,12 @@ class ContrastTrainer:
         repr1_mean = repr1[hmask1].view(len(hmask1), -1, repr_dim).mean(dim=1)
         repr2_mean = repr2[hmask2].view(len(hmask2), -1, repr_dim).mean(dim=1)
 
-        repr1_norm, repr2_norm = repr1_mean.norm(dim=1), rep2_mean.norm(dim=1)
+        repr1_norm, repr2_norm = repr1_mean.norm(dim=1), repr2_mean.norm(dim=1)
 
         dot12 = torch.bmm(repr1_mean.view(len(hmask1), 1, -1), repr2_mean.view(len(hmask1), -1, 1)).squeeze()
         sim = dot12 / (repr1_norm*repr2_norm)
 
-        eval_msk = torch.tensor(transit1+(transit1==transit2),dtype=bool).squeeze() # (check this)
+        eval_msk = (transit1+(transit1==transit2)).type(torch.BoolTensor).squeeze() # (check this)
         loss_repr = ((0.5*(sim*(1-2*positive.squeeze()) + 1))[eval_msk]).mean()
             
         loss = loss_bce + self.lamb * loss_repr
@@ -150,20 +150,27 @@ class ContrastTrainer:
         scores = {rng:{s:0 for s in self.scorenames} for rng in self.snr_ranges}
 
         with torch.no_grad():
-            for flux, mask, transit, rdepth in loader:
-                flux, mask, transit = flux.to(self.device), mask.to(self.device), transit.to(self.device)
-                rdepth = rdepth.to(self.device)
-                rdepth.requires_grad = False
+            for sample1, sample2, positive in loader:
+                flux1, mask1, hmask1, transit1, rdepth1 = sample1
+                flux2, mask2, hmask2, transit2, rdepth2 = sample2
+
+                positive = positive.to(self.device)
+                flux1, mask1, hmask1 = flux1.to(self.device), mask1.to(self.device), hmask1.to(self.device)
+                transit1, rdepth1 = transit1.to(self.device), rdepth1.to(self.device)
+                flux2, mask2, hmask2 = flux2.to(self.device), mask2.to(self.device), hmask2.to(self.device)
+                transit2, rdepth2 = transit2.to(self.device), rdepth2.to(self.device)
+
+                out = self.model(torch.vstack((flux1, flux2)))
+                loss, lvalues = self.get_loss(out, flux1, flux2, mask1, mask2, hmask1, hmask2, 
+                                          transit1, transit2, rdepth1, rdepth2, positive)
                 
-                out = self.model(flux)
-                loss, lvalues = self.get_loss(out, flux, mask, transit, rdepth)
-                
-                batch_size = len(transit)
+                batch_size = len(transit1)
                 for l, lval in lvalues.items():
                     if ~np.isnan(lval):
                         losses[l].append(lval*batch_size)
                         
-                scores_dic = self.get_scores(out, mask, transit, rdepth)
+                scores_dic = self.get_scores(out, torch.vstack((mask1,mask2)),
+                                         torch.cat((transit1,transit2)), torch.vstack((rdepth1,rdepth2)))
                 for rng in self.snr_ranges:
                     for s, sval in scores_dic[rng].items():
                         scores[rng][s] += sval
@@ -183,12 +190,15 @@ class ContrastTrainer:
             positive = positive.to(self.device)
             flux1, mask1, hmask1 = flux1.to(self.device), mask1.to(self.device), hmask1.to(self.device)
             transit1, rdepth1 = transit1.to(self.device), rdepth1.to(self.device)
+            flux2, mask2, hmask2 = flux2.to(self.device), mask2.to(self.device), hmask2.to(self.device)
+            transit2, rdepth2 = transit2.to(self.device), rdepth2.to(self.device)
             
 #             rdepth.requires_grad = False
 
             self.optimizer.zero_grad()
             out = self.model(torch.vstack((flux1, flux2)))
-            loss, lvalues = self.get_loss(out, flux, mask, transit, rdepth)
+            loss, lvalues = self.get_loss(out, flux1, flux2, mask1, mask2, hmask1, hmask2, 
+                                          transit1, transit2, rdepth1, rdepth2, positive)
             loss.backward()
 
             # gradient norm
@@ -207,12 +217,13 @@ class ContrastTrainer:
 
             self.optimizer.step()
     
-            batch_size = len(transit)
+            batch_size = len(transit1)
             for l, lval in lvalues.items():
                 if ~np.isnan(lval):
                     epoch_losses[l].append(lval*batch_size)
                 
-            scores_dic = self.get_scores(out, mask, transit, rdepth)
+            scores_dic = self.get_scores(out, torch.vstack((mask1,mask2)),
+                                         torch.cat((transit1,transit2)), torch.vstack((rdepth1,rdepth2)))
             for rng in self.snr_ranges:
                 for s, sval in scores_dic[rng].items():
                     epoch_scores[rng][s] += sval
@@ -288,16 +299,19 @@ class ContrastTrainer:
             self._tr_weight = None if self.transit_weight is None else torch.tensor([self.transit_weight]).to(self.device)
         else:
             tr_weight = 1 if self.transit_weight is None else self.transit_weight
-            mask = self.train_loader.dataset.mask.numpy().astype(bool)
-            tr = np.sum(mask)
-            rdepth = self.train_loader.dataset.rdepth[mask].numpy()
+            mask1 = self.train_loader.dataset.mask1.numpy().astype(bool)
+            mask2 = self.train_loader.dataset.mask2.numpy().astype(bool)
+            tr1, tr2 = np.sum(mask1), np.sum(mask2)
+            
+            rdepth1 = self.train_loader.dataset.rdepth1[mask1].numpy()
+            rdepth2 = self.train_loader.dataset.rdepth2[mask2].numpy()
             if self.snr_weight == "sqrt":
-                tr_ = np.sum(np.sqrt(rdepth))
+                tr1_, tr2_ = np.sum(np.sqrt(rdepth1)), np.sum(np.sqrt(rdepth2))
             elif self.snr_weight == "snr":
-                tr_ = np.sum(rdepth)
+                tr1_, tr2_ = np.sum(rdepth1), np.sum(rdepth2)
             elif self.snr_weight == "power":
-                tr_ = np.sum(rdepth**2)
-            _tr_weight = tr_weight * tr / tr_
+                tr1_, tr2_ = np.sum(rdepth1**2), np.sum(rdepth2**2)
+            _tr_weight = tr_weight * (tr1+tr2) / (tr1_+tr2_)
             self._tr_weight = None if _tr_weight==1 else torch.tensor([_tr_weight]).to(self.device)
         
     
