@@ -12,6 +12,13 @@ def lin_interp(flux, flat_window=None, pos_offs=1e5, t_step=utils.min2day(2),
         nan = np.isnan(flux)
         if ~np.any(nan):
             return flux
+        
+        if np.any(np.isnan(np.roll(flux,1)[:2])):
+            notnan = np.where(~np.isnan(flux))[0]
+            flux[0] = flux[notnan[0]] if np.isnan(flux[0]) else flux[0]
+            flux[-1] = flux[notnan[-1]] if np.isnan(flux[-1]) else flux[-1]
+            nan[0]=nan[-1]=False
+            
         time = np.arange(len(flux)) * t_step
         if flat_window is not None:
             f_, trend = flatten(time, flux+pos_offs, method="median",
