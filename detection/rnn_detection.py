@@ -11,12 +11,15 @@ from detection.detection_utils import *
 
 def get_pts(model, flux, additional=False):
     # assuming preprocessed flux shaped as [B,N]
-    flux_tens = torch.tensor(flux).type(torch.FloatTensor)
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    model = model.to(device)
+    model.eval()
+    flux_tens = torch.tensor(flux).type(torch.FloatTensor).to(device)
     with torch.no_grad():
         out = model(flux_tens)
         if not additional:
-            return out[0].squeeze().numpy()
-        return out[0].squeeze().numpy(), out[-1].squeeze().numpy()
+            return out[0].squeeze().cpu().numpy()
+        return out[0].squeeze().cpu().numpy(), out[-1].squeeze().cpu().numpy()
 
 
 def fold_multi(time, data, period):
@@ -74,8 +77,8 @@ def find_max(period, score, t0, ntr, peak_frac=2):
     half = maxscore / peak_frac
     p_est, t0_est = period[argmax], t0[argmax]
     searchdist = 0.02 * p_est
-    searchplus = (period < (p_est + searchdist)) & (period > p_est)
-    searchmin = (period < p_est) & (period > (p_est - searchdist))
+    searchplus = (period < (p_est + searchdist)) & (period >= p_est)
+    searchmin = (period <= p_est) & (period > (p_est - searchdist))
     # build in: stop if distance to half score in increases
     Pmin = period[searchmin][np.argmin(np.abs(score[searchmin] - half))]
     Pmax = period[searchplus][np.argmin(np.abs(score[searchplus] - half))]
@@ -100,9 +103,9 @@ def algorithm1(pts, num_iters=3, min_transits=3, p_min=2, p_max=None, step_mult=
         spectra = get_spectra(time, pts_, min_transits=min_transits, p_min=p_min, 
                               p_max=p_max, step_mult=step_mult)
         periods, scores, t0s, ntrs = spectra
-        sdes = (scores-np.mean(scores,1)[:,None]) / np.std(scores,1)[:,None]  # similar to BLS
-        _show_step(periods, sdes[0]) if show_steps else None
-        candidate = find_max(periods, sdes[0], t0s[0], ntrs[0], peak_frac)
+#         sdes = (scores-np.mean(scores,1)[:,None]) / np.std(scores,1)[:,None]  # similar to BLS
+        _show_step(periods, scores[0]) if show_steps else None
+        candidate = find_max(periods, scores[0], t0s[0], ntrs[0], peak_frac)
         p_est, t0_est, dur_est, maxscore = candidate
         detections[maxscore] = {"period":p_est, "t0":t0_est, "duration":dur_est}
         msk = get_transit_mask(time, p_est, t0_est, dur_est, dur_mult=2)
