@@ -198,7 +198,7 @@ def generate_eval_dataset(dir_name, size, pl_fracs=None, t_step=utils.min2day(2)
 
     def _empty_arrays():
         arrays = (np.zeros((batch_save, N_points)), np.zeros((batch_save, N_points), dtype=bool),
-                  np.zeros(batch_save), np.zeros(batch_save), {})
+                  np.zeros(batch_save), np.zeros(batch_save, dtype=int), {})
         return arrays
     
     flux_b, mask_b, sigma_b, sampleid_b, meta_b = _empty_arrays()
