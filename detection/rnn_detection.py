@@ -87,7 +87,7 @@ def find_max(period, score, t0, ntr, peak_frac=2):
 
 
 def algorithm1(pts, num_iters=3, min_transits=3, p_min=2, p_max=None, step_mult=2, 
-               smooth=True, peak_frac=2, show_steps=False):
+               smooth=True, peak_frac=2, show_steps=False, sde=False):
     # folding over periods, weighing overlapping values to define a score at each time step
     def _show_step(x,y):
         plt.figure(figsize=(10,2))
@@ -103,7 +103,8 @@ def algorithm1(pts, num_iters=3, min_transits=3, p_min=2, p_max=None, step_mult=
         spectra = get_spectra(time, pts_, min_transits=min_transits, p_min=p_min, 
                               p_max=p_max, step_mult=step_mult)
         periods, scores, t0s, ntrs = spectra
-#         sdes = (scores-np.mean(scores,1)[:,None]) / np.std(scores,1)[:,None]  # similar to BLS
+        if sde:
+            scores = (scores-np.mean(scores,1)[:,None]) / np.std(scores,1)[:,None]  # similar to BLS
         _show_step(periods, scores[0]) if show_steps else None
         candidate = find_max(periods, scores[0], t0s[0], ntrs[0], peak_frac)
         p_est, t0_est, dur_est, maxscore = candidate
