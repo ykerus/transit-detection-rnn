@@ -100,7 +100,18 @@ def preprocess(flux, scaling=None, mode=0, nanmode=0, mean=None, std=None,
 
     # mode 0: nothing
     nan = np.isnan(flux_)
-    if mode == 1:  # scale
+    if mode == 0:
+        if nanmode == 1:
+            flux_[nan] = 0
+            if centr is not None:
+                centr_[0][nan], centr_[1][nan] = 0, 0
+        elif nanmode == 2:
+            flux_ = lin_interp(flux_, window)
+            if centr is not None:
+                centr_[0] = lin_interp(centr_[0], window)
+                centr_[1] = lin_interp(centr_[1], window)
+                
+    elif mode == 1:  # scale
         if nanmode == 1:
             flux_[nan] = 0
             if centr is not None:
