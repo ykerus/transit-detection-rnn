@@ -6,4 +6,3 @@ venv*
 data/*
 *.pt
 *.pkl
-results/*
