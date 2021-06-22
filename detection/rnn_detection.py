@@ -87,7 +87,7 @@ def find_max(period, score, t0, ntr, peak_frac=2):
 
 
 def algorithm1(pts, num_iters=3, min_transits=3, p_min=2, p_max=None, step_mult=2, 
-               smooth=True, peak_frac=2, show_steps=False, sde=False):
+               smooth=True, peak_frac=2, show_steps=False, sde=False, return_steps=False):
     # folding over periods, weighing overlapping values to define a score at each time step
     def _show_step(x,y):
         plt.figure(figsize=(10,2))
@@ -98,19 +98,29 @@ def algorithm1(pts, num_iters=3, min_transits=3, p_min=2, p_max=None, step_mult=
     pts_ = gaussian_filter1d(pts.copy(), 9).reshape(1,-1) if smooth else pts.copy().reshape(1,-1)
       
     detections = {}
-   
+    steps = {"pts":[], "scores":[], "t0":[], "masks":[]}
     for i in range(num_iters):
         spectra = get_spectra(time, pts_, min_transits=min_transits, p_min=p_min, 
                               p_max=p_max, step_mult=step_mult)
         periods, scores, t0s, ntrs = spectra
+        
         if sde:
             scores = (scores-np.mean(scores,1)[:,None]) / np.std(scores,1)[:,None]  # similar to BLS
+        
+        
         _show_step(periods, scores[0]) if show_steps else None
         candidate = find_max(periods, scores[0], t0s[0], ntrs[0], peak_frac)
         p_est, t0_est, dur_est, maxscore = candidate
         detections[maxscore] = {"period":p_est, "t0":t0_est, "duration":dur_est}
         msk = get_transit_mask(time, p_est, t0_est, dur_est, dur_mult=2)
+        if return_steps:
+            steps["periods"] = periods
+            steps["pts"].append(pts_.copy()), steps["scores"].append(scores[0])
+            steps["t0"].append(t0s), steps["masks"].append(msk)
         pts_[0,msk] = 0  # hide detected transits and run again
+
+    if return_steps:
+        return detections, steps
     return detections
 
 # ====================================
@@ -221,9 +231,10 @@ def filter_matches(matches, tcs):
             filtered.append(match)
     return sorted(filtered, key=len, reverse=True)
 
-def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2):
+def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2, return_steps=False):
     time = np.arange(len(pts)) * utils.min2day(2)
     pts_ = gaussian_filter1d(pts.copy(), 9) if smooth else pts.copy()
+    
     
     peaks = get_peaks(pts_>0.25) 
     if peaks is None:
@@ -236,11 +247,13 @@ def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2):
     match_h = []
     for i in range(len(peaks)):
         match_h += [(i,j) for j in range(i+1,len(peaks))]
-        
+    
     detections = {}
     candidates = find_candidates(match_h, peak_tc, time[-1])
+    if return_steps:
+        steps = {"peaks":peaks, "candidates":candidates, "pts":[], "info":[], "masks":[], "best_candidates":[]}
     for i in range(num_iters):
- 
+        steps["pts"].append(pts_.copy())
         best_candidate = (-1, -1)
         max_score, best_period, best_duration, best_t0 = 0, -1, -1, -1
 
@@ -249,6 +262,8 @@ def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2):
             try_period = np.median(np.diff(peak_tc[np.array(c)]))
             try_t0 = np.median([peak_tc[ci]-i*try_period for i,ci in enumerate(c)])
             if try_duration < 15./60/24 or try_period < p_min or try_t0 < 0:
+                if return_steps:
+                    steps["info"].append(f"{c} rejected: duration, P or t0 outside allowed range")
                 continue
             score, n_transits = 0, 0
             tt = try_t0
@@ -263,10 +278,12 @@ def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2):
                 best_t0 = try_t0
                 best_duration = try_duration
                 best_candidate = c
+                if return_steps:
+                    steps["info"].append(f"{c} new best: score = {max_score}, period = {best_period} d")
 
         if best_candidate is not (-1,-1):
+            harmonic = 2
             if best_period/2 > p_min:
-                harmonic = 2
                 base_period = best_period
                 try_period = base_period / harmonic
                 while try_period > p_min:
@@ -288,9 +305,16 @@ def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2):
                         max_score = harmonic_score
 
                     harmonic += 1
-                    try_period = base_period/harmonic   
+                    try_period = base_period/harmonic
+            if return_steps:
+                steps["info"].append(f"{best_candidate} harmonics evaluated: tried {harmonic-2} harmonics, "+
+                                     f"new score = {max_score}, period = {best_period} d")
             detections[max_score] = {"period":best_period, "t0":best_t0, "duration":best_duration}
             msk = get_transit_mask(time, best_period, best_t0, best_duration, dur_mult=2)
+            if return_steps:
+                steps["masks"].append(msk.copy())
+                steps["best_candidates"].append(best_candidate)
             pts_[msk] = 0
-                
+    if return_steps:
+        return detections, steps
     return detections
