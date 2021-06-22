@@ -125,7 +125,8 @@ class ContrastTrainer:
         dot12 = torch.bmm(repr1_mean.view(len(hmask1), 1, -1), repr2_mean.view(len(hmask1), -1, 1)).squeeze()
         sim = dot12 / (repr1_norm*repr2_norm)
 
-        eval_msk = (transit1+(transit1==transit2)).type(torch.BoolTensor).squeeze() # (check this)
+        # eval_msk: everything except if transit1 is false and transit2 is true
+        eval_msk = (transit1+(transit1==transit2)).type(torch.BoolTensor).squeeze()
         loss_repr = ((0.5*(sim*(1-2*positive.squeeze()) + 1))[eval_msk]).mean()
             
         loss = loss_bce + self.lamb * loss_repr
