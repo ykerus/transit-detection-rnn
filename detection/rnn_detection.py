@@ -231,12 +231,12 @@ def filter_matches(matches, tcs):
             filtered.append(match)
     return sorted(filtered, key=len, reverse=True)
 
-def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2, return_steps=False):
+def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2, return_steps=False, peak_thresh=0.25):
     time = np.arange(len(pts)) * utils.min2day(2)
     pts_ = gaussian_filter1d(pts.copy(), 9) if smooth else pts.copy()
     
     
-    peaks = get_peaks(pts_>0.25) 
+    peaks = get_peaks(pts_>peak_thresh) 
     if peaks is None:
         return {}
 #     peak_h = agg_h(r, peaks, agg_fn=np.mean, normalize=True)  # add aggregated confidences
