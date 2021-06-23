@@ -126,7 +126,9 @@ class ContrastTrainer:
         sim = dot12 / (repr1_norm*repr2_norm)
 
         # eval_msk: everything except if transit1 is false and transit2 is true
-        eval_msk = (transit1+(transit1==transit2)).type(torch.BoolTensor).squeeze()
+#         eval_msk = (transit1+(transit1==transit2)).type(torch.BoolTensor).squeeze()
+        # eval_msk: everything except if transit1 is false and transit2 is true or vice versa
+        eval_msk = (transit1==transit2).type(torch.BoolTensor).squeeze()
         loss_repr = ((0.5*(sim*(1-2*positive.squeeze()) + 1))[eval_msk]).mean()
             
         loss = loss_bce + self.lamb * loss_repr
