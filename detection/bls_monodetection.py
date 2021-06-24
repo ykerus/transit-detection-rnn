@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from detection import rnn_detection as rnndet
+from wotan import flatten
 
 def search(tau, t, x, y, ivar, apodize=1.0):
     # https://github.com/dfm/peerless/blob/main/peerless/_search.pyx
@@ -72,7 +73,7 @@ def monotransit_detection(lctime, flat, unc, durations=None, grid_frac=0.25, tim
     
     for i, tau in enumerate(durations):
         time_ = np.arange(lctime.min(), lctime.max(), grid_frac * tau)
-        d, d_ivar, s = search(tau, time_, lctime, flat-1, np.ones(len(flux))*1/unc**2) 
+        d, d_ivar, s = search(tau, time_, lctime, flat-1, np.ones(len(flat))*1/unc**2) 
         s2n[i] = s[time_indc[i]]
         depth[i] = d[time_indc[i]]
         depth_ivar[i] = d_ivar[time_indc[i]]
