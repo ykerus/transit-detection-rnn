@@ -9,8 +9,8 @@ def monotransit_detection(pts, conf=None, peak_thresh=0.5, agg_fn=np.multiply, s
     time = np.arange(len(pts)) * utils.min2day(2)
     conf = np.ones_like(pts) if conf is None else conf
     
-    pts_ = gaussian_filter1d(pts.copy(), 9) if smooth else pts
-    conf_ = gaussian_filter1d(conf.copy(), 9) if smooth else pts
+    pts_ = gaussian_filter1d(pts.copy(), 9) if smooth else pts.copy()
+    conf_ = gaussian_filter1d(conf.copy(), 9) if smooth else conf.copy()
     
     tr_indc = rnndet.get_peaks(pts_>=peak_thresh)
     
