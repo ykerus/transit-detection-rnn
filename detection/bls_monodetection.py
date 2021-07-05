@@ -2,6 +2,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 from detection import rnn_detection as rnndet
 from wotan import flatten
+import utils
 
 def search(tau, t, x, y, ivar, apodize=1.0):
     # https://github.com/dfm/peerless/blob/main/peerless/_search.pyx
@@ -12,8 +13,8 @@ def search(tau, t, x, y, ivar, apodize=1.0):
     out_depth_ivar = np.zeros(nt)
     
     for n in range(nt):
-        tmn = t[n] - tau/2
-        tmx = tmn + tau/2
+        tmn = t[n] #- tau/2
+        tmx = tmn + tau#/2
         depth = 0.0
         depth_ivar = 0.0
 
@@ -56,13 +57,13 @@ def get_time_indc(lctime, durations, grid_frac):
     indc = np.zeros((len(durations), len(lctime)), dtype=int)        
     for i, tau in enumerate(durations):
         time_ = np.arange(lctime.min(), lctime.max(), grid_frac * tau)
-        diff = np.abs(lctime.reshape(-1,1) - time_)
+        diff = np.abs(lctime.reshape(-1,1) - (time_+0.5*tau))
         indc[i] = np.argmin(diff, 1)
     return indc
 
     
 def monotransit_detection(lctime, flat, unc, durations=None, grid_frac=0.25, time_indc=None, return_indc=False, 
-                         smooth=True, peak_thresh=10, score_fn=np.max, return_s2n=False):
+                         smooth=True, peak_thresh=10, score_fn=np.max, return_s2n=False, sde_thresh=3.5, iterate=True):
     # time_indc help transfering detections back to larger time grid, and compare multiple durations
     durations = np.arange(1.,13.5,2)/24. if durations is None else durations
     time_indc = get_time_indc(lctime, durations, grid_frac) if time_indc is None else time_indc
@@ -96,6 +97,8 @@ def monotransit_detection(lctime, flat, unc, durations=None, grid_frac=0.25, tim
     dfm_detections = {}
     sde_detections = {} # sde is not completely right here, but include for comparison
     
+    sde_iter_detections = {} # sde is not completely right here, but include for comparison
+    
     tr_indc = rnndet.get_peaks(s2n>=peak_thresh)
     tc = rnndet.get_tc(lctime, tr_indc, s2n)
     s2n_scores = [score_fn(s2n[indc]) for indc in tr_indc]
@@ -107,11 +110,24 @@ def monotransit_detection(lctime, flat, unc, durations=None, grid_frac=0.25, tim
         s2n_detections[s2n_scores[i]] = {"t0":tc[i], "duration":dur_est}
         dfm_detections[dfm_scores[i]] = {"t0":tc[i], "duration":dur_est}
         sde_detections[sde_scores[i]] = {"t0":tc[i], "duration":dur_est}
+      
+    if iterate:
+        while np.max(sde) > sde_thresh:
+            tr_indc = rnndet.get_peaks(sde>=sde_thresh)
+            max_peak = np.argmax([np.max(sde[indc]) for indc in tr_indc])
+            indc = tr_indc[max_peak]
+            tc = rnndet.get_tc(lctime, [indc], s2n)
+            dur_est = lctime[indc[-1]] - lctime[indc[0]]
+            if dur_est > utils.min2day(15):
+                sde_iter_detections[score_fn(sde[indc])] = {"t0":tc, "duration":dur_est}
+            msk = (lctime >= (tc-0.5*dur_est)) & (lctime <= (tc+0.5*dur_est))
+            sde[msk] = 0
+            sde = (sde - sde[~msk].mean()) / sde[~msk].std()
         
     if return_indc and not return_s2n:
-        return s2n_detections, dfm_detections, sde_detections, time_indc
+        return s2n_detections, dfm_detections, sde_detections, sde_iter_detections, time_indc
     elif return_s2n and not return_indc:
-        return s2n_detections, dfm_detections, sde_detections, 
+        return s2n_detections, dfm_detections, sde_detections, sde_iter_detections
     elif return_indc and return_s2n:
-        return s2n_detections, dfm_detections, sde_detections, time_indc, s2n
-    return s2n_detections, dfm_detections, sde_detections
+        return s2n_detections, dfm_detections, sde_detections, sde_iter_detections, time_indc, s2n
+    return s2n_detections, dfm_detections, sde_detections, sde_iter_detections

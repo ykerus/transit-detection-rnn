@@ -235,7 +235,6 @@ def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2, return_steps=False
     time = np.arange(len(pts)) * utils.min2day(2)
     pts_ = gaussian_filter1d(pts.copy(), 9) if smooth else pts.copy()
     
-    
     peaks = get_peaks(pts_>peak_thresh) 
     if peaks is None:
         return {}
@@ -246,7 +245,7 @@ def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2, return_steps=False
 #     match_h = match_hiddens(peak_h, sim_thresh=-99) # FIX: it matches with itself
     match_h = []
     for i in range(len(peaks)):
-        match_h += [(i,j) for j in range(i+1,len(peaks))]
+        match_h += [(i,j) for j in range(i+1,len(peaks)) if np.abs(peak_tc[i]-peak_tc[j])>p_min]
     
     detections = {}
     candidates = find_candidates(match_h, peak_tc, time[-1])
