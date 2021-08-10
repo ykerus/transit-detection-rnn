@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from astropy.timeseries import BoxLeastSquares
 from detection.detection_utils import *
 
-def algorithm(time, flux, num_iters=3, min_transits=3, show_steps=False, min_p=2, freq_fac=3):
+def algorithm(time, flux, num_iters=3, min_transits=3, show_steps=False, min_p=2, freq_fac=3, return_steps=False):
     # assuming preprocessed (detrended) flux 
     def _show_step(x,y):
         plt.figure(figsize=(10,2))
@@ -14,6 +14,7 @@ def algorithm(time, flux, num_iters=3, min_transits=3, show_steps=False, min_p=2
         
     flux_, time_ = flux.copy(), time.copy()
     detections = {}
+    steps = {"sde":[], "mask":[], "periods":[]}
     for i in range(num_iters):
         model = BoxLeastSquares(time_, flux_)
         
@@ -37,5 +38,11 @@ def algorithm(time, flux, num_iters=3, min_transits=3, show_steps=False, min_p=2
         t0_est = pgram.transit_time[argmax]
         detections[maxscore] = {"period":p_est, "t0":t0_est, "duration":dur_est}
         msk = get_transit_mask(time_, p_est, t0_est, dur_est, dur_mult=2)
+        if return_steps:
+            steps["sde"].append(sde)
+            steps["mask"].append(msk)
+            steps["periods"].append(pgram.period)
         flux_, time_ = flux_[~msk], time_[~msk]
+    if return_steps:
+        return detections, steps
     return detections

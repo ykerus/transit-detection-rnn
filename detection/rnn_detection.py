@@ -191,7 +191,7 @@ def find_candidates(matches, tcs, t_max):
         match_copy.remove(match)
         match_tcs = [tcs[i] for i in match]
         if match_tcs[1] < match_tcs[0] * 2:
-            continue  # not always correct, could have missed one at beginning
+            continue  
         while True:
             p_expd = np.diff(match_tcs).mean()
             next_exp = match_tcs[-1] + p_expd  # expected time of next signal
@@ -199,12 +199,11 @@ def find_candidates(matches, tcs, t_max):
             if next_exp > t_max:
                 candidates.append(match)
                 break
-#             next_candidates = np.where((tcs > next_min)*(tcs < next_max))[0] # !could be multiple 
             next_candidate = np.argmin(np.abs(tcs - next_exp))
             if tcs[next_candidate] < next_min or tcs[next_candidate] > next_max:
                 break
             
-            s = next_candidate # could do: for s in next candidates
+            s = next_candidate 
             next_match = False
     
             for m in match_copy:
@@ -250,8 +249,12 @@ def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2, return_steps=False
     detections = {}
     candidates = find_candidates(match_h, peak_tc, time[-1])
     if return_steps:
-        steps = {"peaks":peaks, "candidates":candidates, "pts":[], "info":[], "masks":[], "best_candidates":[]}
+        steps = {"peaks":peaks, "candidates":candidates, "pts":[], "info":[], "masks":[], "best_candidates":[],
+                 "tc":peak_tc}
     for i in range(num_iters):
+
+        if len(candidates)==0:
+            break
         steps["pts"].append(pts_.copy())
         best_candidate = (-1, -1)
         max_score, best_period, best_duration, best_t0 = 0, -1, -1, -1
@@ -279,8 +282,7 @@ def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2, return_steps=False
                 best_candidate = c
                 if return_steps:
                     steps["info"].append(f"{c} new best: score = {max_score}, period = {best_period} d")
-
-        if best_candidate is not (-1,-1):
+        if best_candidate != (-1,-1):
             harmonic = 2
             if best_period/2 > p_min:
                 base_period = best_period
@@ -314,6 +316,8 @@ def algorithm2(pts, reprs, num_iters=3, smooth=True, p_min=2, return_steps=False
                 steps["masks"].append(msk.copy())
                 steps["best_candidates"].append(best_candidate)
             pts_[msk] = 0
+        else:
+            break
     if return_steps:
         return detections, steps
     return detections

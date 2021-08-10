@@ -6,3 +6,5 @@ venv*
 data/*
 *.pt
 *.pkl
+results*
+figures*
